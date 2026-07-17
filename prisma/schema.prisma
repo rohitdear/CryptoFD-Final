@@ -1,0 +1,292 @@
+// Prisma Schema for CryptoFD
+// PostgreSQL database on Render
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User profile with balance and referral info
+model Profile {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String   @map("password_hash")
+  name             String?
+  phone            String?
+  profilePhoto     String?  @map("profile_photo") @db.Text
+  referralCode     String   @unique @default(uuid()) @map("referral_code")
+  referredBy       String?  @map("referred_by")
+  walletBalance    Decimal  @default(0) @map("wallet_balance") @db.Decimal(18, 6)
+  lockedBalance    Decimal  @default(0) @map("locked_balance") @db.Decimal(18, 6)
+  totalEarnings    Decimal  @default(0) @map("total_earnings") @db.Decimal(18, 6)
+  referralEarnings Decimal  @default(0) @map("referral_earnings") @db.Decimal(18, 6)
+  usdtAddress      String?  @map("usdt_address")
+  isAdmin              Boolean  @default(false) @map("is_admin")
+  isVerified           Boolean  @default(false) @map("is_verified")
+  withdrawalDisabled   Boolean  @default(false) @map("withdrawal_disabled")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // OTP for email verification
+  otpCode          String?  @map("otp_code")
+  otpExpiresAt     DateTime? @map("otp_expires_at")
+
+  // Relations
+  userFds              UserFd[]
+  transactions         Transaction[]
+  wallets              Wallet[]
+  withdrawalRequests   WithdrawalRequest[]
+  sweepTasks           SweepTask[]
+  referralsAsReferrer  Referral[] @relation("ReferrerRelation")
+  referralsAsReferred  Referral[] @relation("ReferredRelation")
+
+  @@map("profiles")
+}
+
+// FD Investment Plans
+model FdPlan {
+  id           String   @id @default(uuid())
+  name         String
+  minAmount    Decimal  @map("min_amount") @db.Decimal(18, 6)
+  maxAmount    Decimal  @map("max_amount") @db.Decimal(18, 6)
+  dailyRoi     Decimal  @map("daily_roi") @db.Decimal(5, 2)
+  durationDays Int      @map("duration_days")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  userFds UserFd[]
+
+  @@map("fd_plans")
+}
+
+// User's FD investments
+model UserFd {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  planId          String   @map("plan_id")
+  planName        String   @map("plan_name")
+  amount          Decimal  @db.Decimal(18, 6)
+  dailyEarning    Decimal  @map("daily_earning") @db.Decimal(18, 6)
+  totalEarned     Decimal  @default(0) @map("total_earned") @db.Decimal(18, 6)
+  daysCompleted   Int      @default(0) @map("days_completed")
+  status          String   @default("active") // active, completed, cancelled
+  startDate       DateTime @default(now()) @map("start_date")
+  endDate         DateTime @map("end_date")
+  lastPayoutDate  DateTime @default(now()) @map("last_payout_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan FdPlan  @relation(fields: [planId], references: [id])
+
+  @@map("user_fds")
+}
+
+// Transaction history
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  type        String   // deposit, withdrawal, fd_investment, fd_earning, referral_commission, referral_earning, fd_maturity, cold_sweep
+  amount      Decimal  @db.Decimal(18, 6)
+  status      String   @default("completed") // pending, completed, failed
+  txHash      String?  @map("tx_hash")
+  logIndex    Int?     @map("log_index")
+  description String?
+  referenceId String?  @map("reference_id") // for linking to FD or other entities
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([txHash, logIndex])
+  @@map("transactions")
+}
+
+// Referral relationships (3-level)
+model Referral {
+  id         String   @id @default(uuid())
+  referrerId String   @map("referrer_id")
+  referredId String   @map("referred_id")
+  level      Int      // 1, 2, or 3
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  referrer Profile @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred Profile @relation("ReferredRelation", fields: [referredId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerId, referredId])
+  @@map("referrals")
+}
+
+// HD Wallet derived addresses for deposits
+model Wallet {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  address         String   @unique
+  derivationIndex Int      @unique @map("derivation_index")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+// Sweep tasks for moving deposits to hot wallet
+model SweepTask {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  address         String
+  walletAddress   String   @map("wallet_address")
+  amount          Decimal  @db.Decimal(18, 6)
+  derivationIndex Int      @map("derivation_index")
+  txHash          String?  @map("tx_hash")
+  status          String   @default("pending") // pending, gas_sent, sweeping, completed, failed
+  gasTxHash       String?  @map("gas_tx_hash")
+  sweepTxHash     String?  @map("sweep_tx_hash")
+  errorMessage    String?  @map("error_message")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sweep_tasks")
+}
+
+// Withdrawal requests
+model WithdrawalRequest {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  amount       Decimal  @db.Decimal(18, 6)
+  toAddress    String   @map("to_address")
+  status       String   @default("pending") // pending, processing, completed, failed
+  txHash       String?  @map("tx_hash")
+  errorMessage String?  @map("error_message")
+  processedAt  DateTime? @map("processed_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("withdrawal_requests")
+}
+
+// Session tokens for JWT auth
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sessions")
+}
+
+// Block tracker for deposit scanning
+model BlockTracker {
+  chain     String   @id
+  lastBlock Int      @map("last_block")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@map("block_tracker")
+}
+
+// Trading stats for "Our Works" page - stores cumulative trading profit
+model TradingStats {
+  id              String   @id @default("main")
+  totalProfit     Decimal  @default(0) @map("total_profit") @db.Decimal(18, 2)
+  totalTrades     Int      @default(0) @map("total_trades")
+  todayProfit     Decimal  @default(0) @map("today_profit") @db.Decimal(18, 2)
+  activeTrades    Int      @default(0) @map("active_trades")
+  winRate         Decimal  @default(76.5) @map("win_rate") @db.Decimal(5, 2)
+  dailyTarget     Decimal  @default(400000) @map("daily_target") @db.Decimal(18, 2)
+  dailyTargetMin  Decimal  @default(300000) @map("daily_target_min") @db.Decimal(18, 2)
+  dailyTargetMax  Decimal  @default(500000) @map("daily_target_max") @db.Decimal(18, 2)
+  lastUpdated     DateTime @default(now()) @map("last_updated")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("trading_stats")
+}
+
+// Site statistics for About page and public information
+model SiteStats {
+  id             String   @id @default("main")
+  activeUsers    String   @default("10,000+") @map("active_users")
+  totalInvested  String   @default("$5M+") @map("total_invested")
+  countries      String   @default("50+")
+  yearsExp       String   @default("3+") @map("years_exp")
+  supportEmail   String   @default("support@cryptofdforever.com") @map("support_email")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("site_stats")
+}
+
+// Dashboard about page statistics (same as SiteStats)
+model DashboardStats {
+  id             String   @id @default("main")
+  activeUsers    String   @default("10,000+") @map("active_users")
+  totalInvested  String   @default("$5M+") @map("total_invested")
+  countries      String   @default("50+")
+  yearsExp       String   @default("3+") @map("years_exp")
+  supportEmail   String   @default("support@cryptofdforever.com") @map("support_email")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("dashboard_stats")
+}
+
+// Daily trading records for historical data
+model TradingDailyRecord {
+  id          String   @id @default(uuid())
+  date        DateTime @unique @db.Date
+  profit      Decimal  @db.Decimal(18, 2)
+  trades      Int
+  winRate     Decimal  @map("win_rate") @db.Decimal(5, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("trading_daily_records")
+}
+
+// Live trading activity - shows recent trades
+model TradingActivity {
+  id          String   @id @default(uuid())
+  crypto      String   // BTC, ETH, BNB, etc.
+  action      String   // BUY or SELL
+  amount      Decimal  @db.Decimal(18, 2)
+  profit      Decimal? @db.Decimal(18, 2)
+  status      String   @default("completed") // completed, pending
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("trading_activity")
+  @@index([timestamp])
+}
+
+// Portfolio allocation - distribution of capital
+model PortfolioAllocation {
+  id          String   @id @default(uuid())
+  asset       String   @unique // BTC, ETH, Stablecoins, etc.
+  percentage  Int      // 0-100
+  value       Decimal  @db.Decimal(18, 2)
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@map("portfolio_allocation")
+}
+
+// Crypto price data for charting
+model CryptoPrice {
+  id          String   @id @default(uuid())
+  crypto      String   // BTC, ETH, BNB, SOL
+  date        DateTime
+  price       Decimal  @db.Decimal(18, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([crypto, date])
+  @@map("crypto_prices")
+  @@index([crypto, date])
+}

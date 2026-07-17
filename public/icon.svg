@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background rounded square -->
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="url(#grad)"/>
+  <!-- Crystal/Diamond icon -->
+  <path d="M8 10h16l3 4.5L16 26 5 14.5z" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 26V14.5" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M5 14.5h22" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M8 10l8 4.5 8-4.5" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Accent dot -->
+  <circle cx="26" cy="6" r="3" fill="#fbbf24"/>
+</svg>
