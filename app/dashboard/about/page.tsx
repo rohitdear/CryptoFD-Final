@@ -141,7 +141,7 @@ export default async function AboutPage() {
               </div>
               <div className="bg-secondary/50 rounded-lg sm:rounded-xl p-3 sm:p-4 text-center">
                 <Building2 className="w-4 sm:w-6 h-4 sm:h-6 text-primary mx-auto mb-2" />
-                <p className="font-semibold text-xs sm:text-sm text-foreground">2025</p>
+                <p className="font-semibold text-xs sm:text-sm text-foreground">2022</p>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">Established</p>
               </div>
               <div className="bg-secondary/50 rounded-lg sm:rounded-xl p-3 sm:p-4 text-center">
